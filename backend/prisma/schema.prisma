@@ -1,0 +1,113 @@
+generator client {
+  provider            = "prisma-client"
+  output              = "../src/generated"
+  moduleFormat        = "esm"
+  importFileExtension = "js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum RecipientStatus {
+  SCHEDULED
+  SENDING
+  SENT
+  FAILED
+}
+
+model User {
+  id           String        @id @default(cuid())
+  googleId     String        @unique
+  email        String        @unique
+  name         String?
+  picture      String?
+  createdAt    DateTime      @default(now())
+  sessions     Session[]
+  integrations Integration[]
+  campaigns    Campaign[]
+}
+
+model Session {
+  id        String   @id
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+model Integration {
+  id             String   @id @default(cuid())
+  userId         String
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  provider       String
+  encryptedToken String
+  channelId      String
+  teamName       String?
+  createdAt      DateTime @default(now())
+
+  @@unique([userId, provider])
+}
+
+model Campaign {
+  id             String      @id @default(cuid())
+  userId         String
+  user           User        @relation(fields: [userId], references: [id])
+  name           String
+  subject        String
+  body           String
+  startAt        DateTime
+  delaySeconds   Int
+  hourlyLimit    Int
+  idempotencyKey String?
+  createdAt      DateTime    @default(now())
+  recipients     Recipient[]
+
+  @@unique([userId, idempotencyKey])
+  @@index([userId])
+}
+
+model Recipient {
+  id         String            @id @default(cuid())
+  campaignId String
+  campaign   Campaign          @relation(fields: [campaignId], references: [id])
+  email      String
+  position   Int
+  status     RecipientStatus   @default(SCHEDULED)
+  sendAt     DateTime
+  sentAt     DateTime?
+  lastError  String?
+  createdAt  DateTime          @default(now())
+  attempts   DeliveryAttempt[]
+  outbox     OutboxEvent?
+
+  @@unique([campaignId, email])
+  @@index([campaignId, status])
+  @@index([status, sendAt])
+}
+
+model DeliveryAttempt {
+  id           String    @id @default(cuid())
+  recipientId  String
+  recipient    Recipient @relation(fields: [recipientId], references: [id])
+  ok           Boolean
+  smtpResponse String?
+  error        String?
+  previewUrl   String?
+  createdAt    DateTime  @default(now())
+
+  @@index([recipientId])
+}
+
+model OutboxEvent {
+  id          String    @id @default(cuid())
+  recipientId String    @unique
+  recipient   Recipient @relation(fields: [recipientId], references: [id])
+  runAt       DateTime
+  publishedAt DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@index([publishedAt])
+}
